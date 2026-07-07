@@ -1,9 +1,8 @@
 {
   "framework": "nextjs",
-  "buildCommand": "cd ../.. && npm install && cd apps/web && npm run build",
+  "buildCommand": "cd ../.. && pnpm install --no-frozen-lockfile && cd apps/web && pnpm build",
   "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "nodeVersion": "22.x",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "regions": ["iad1"],
   "headers": [
     {
