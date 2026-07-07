@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { AI_CONFIG, getChatCompletionBody, getFetchHeaders } from '@/lib/ai/config';
 
 // ---------------------------------------------------------------------------
 // Request validation schema
@@ -90,28 +91,15 @@ function buildSystemPrompt(context?: ClinicalQuestionInput['patientContext']): s
 // ---------------------------------------------------------------------------
 
 async function callOpenAI(question: string, context?: ClinicalQuestionInput['patientContext']) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is not configured');
-  }
-
-  const systemPrompt = buildSystemPrompt(context);
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const systemMsg = buildSystemPrompt(context);
+  const body = getChatCompletionBody([
+    { role: 'system', content: systemMsg },
+    { role: 'user', content: question },
+  ]);
+  const response = await fetch(`${AI_CONFIG.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question },
-      ],
-      temperature: 0.3,
-      max_tokens: 1024,
-    }),
+    headers: getFetchHeaders(),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
