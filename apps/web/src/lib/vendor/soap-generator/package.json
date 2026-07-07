@@ -1,0 +1,21 @@
+{
+  "name": "@rehabos/soap-generator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered SOAP note generation for RehabOS",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf ./dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.83.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@rehabos/tsconfig": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

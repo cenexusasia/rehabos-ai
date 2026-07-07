@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { generateSoap } from '@/../packages/ai/soap-generator';
+import { generateSoap } from '@/lib/vendor/soap-generator';
 
 // ---------------------------------------------------------------------------
 // Request validation schema (mirrors soapGenerateParamsSchema with
