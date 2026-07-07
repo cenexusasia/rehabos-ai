@@ -26,9 +26,6 @@ const nextConfig: NextConfig = {
   ],
   poweredByHeader: false,
   reactStrictMode: true,
-  outputFileTracingIncludes: {
-    '/*': ['./**/*'],
-  },
 };
 
 export default nextConfig;
