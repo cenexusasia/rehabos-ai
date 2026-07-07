@@ -33,3 +33,5 @@ packages/database/.env
 # Vendor copied node_modules
 apps/web/src/lib/vendor/*/node_modules/
 apps/web/src/lib/vendor/node_modules/
+
+.vercel
