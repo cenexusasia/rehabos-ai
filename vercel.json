@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/web/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "nodeVersion": "22.x"
+      }
+    }
+  ],
+  "framework": "nextjs",
+  "buildCommand": "cd ../.. && pnpm install && cd apps/web && pnpm build",
+  "outputDirectory": ".next",
+  "installCommand": "pnpm install",
+  "regions": ["iad1"]
+}

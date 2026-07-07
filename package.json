@@ -1,6 +1,7 @@
 {
   "name": "rehabos-ai",
   "private": true,
+  "packageManager": "pnpm@10.18.3",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
