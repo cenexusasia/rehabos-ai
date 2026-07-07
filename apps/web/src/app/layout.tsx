@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 
@@ -15,6 +15,12 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'RehabOS AI',
   description: 'AI-Native Operating System for Rehabilitation Professionals',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
