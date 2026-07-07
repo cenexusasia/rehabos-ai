@@ -1,0 +1,11 @@
+{
+  "extends": "@rehabos/tsconfig/react-native.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "strict": true
+  },
+  "include": ["src/**/*", "app/**/*"]
+}

@@ -1,0 +1,59 @@
+version: "3.9"
+
+name: rehabos-ai
+
+networks:
+  rehabos-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  meilisearch_data:
+    driver: local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rehabos-postgres
+    restart: unless-stopped
+    networks:
+      - rehabos-network
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rehabos
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rehabos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: rehabos-meilisearch
+    restart: unless-stopped
+    networks:
+      - rehabos-network
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: rehabos-dev-master-key
+      MEILI_ENV: development
+    volumes:
+      - meilisearch_data:/meili_data
+
+  redis:
+    image: redis:7-alpine
+    container_name: rehabos-redis
+    restart: unless-stopped
+    networks:
+      - rehabos-network
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes

@@ -1,0 +1,40 @@
+{
+  "name": "@rehabos/ai-clinical-decision-support",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rule-based and AI-powered clinical decision support tools for RehabOS",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./risk-stratification": {
+      "types": "./dist/risk-stratification.d.ts",
+      "import": "./dist/risk-stratification.mjs",
+      "require": "./dist/risk-stratification.js"
+    },
+    "./adherence-predictor": {
+      "types": "./dist/adherence-predictor.d.ts",
+      "import": "./dist/adherence-predictor.mjs",
+      "require": "./dist/adherence-predictor.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf ./dist"
+  },
+  "dependencies": {
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@rehabos/tsconfig": "workspace:*",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  }
+}

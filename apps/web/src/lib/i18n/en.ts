@@ -1,0 +1,45 @@
+import type { Dictionary } from './dictionary';
+
+export const en: Dictionary = {
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    edit: 'Edit',
+    search: 'Search',
+    loading: 'Loading...',
+    error: 'An error occurred',
+    success: 'Success',
+  },
+  auth: {
+    signIn: 'Sign In',
+    signUp: 'Sign Up',
+    signOut: 'Sign Out',
+    email: 'Email',
+    password: 'Password',
+    forgotPassword: 'Forgot Password?',
+  },
+  nav: {
+    dashboard: 'Dashboard',
+    patients: 'Patients',
+    schedule: 'Schedule',
+    soapNotes: 'SOAP Notes',
+    exercises: 'Exercises',
+    assessments: 'Assessments',
+    messages: 'Messages',
+    telehealth: 'Telehealth',
+    billing: 'Billing',
+    analytics: 'Analytics',
+    settings: 'Settings',
+  },
+  patient: {
+    title: 'Patient',
+    name: 'Name',
+    dateOfBirth: 'Date of Birth',
+    phone: 'Phone',
+    email: 'Email',
+    diagnosis: 'Diagnosis',
+    notes: 'Notes',
+    newPatient: 'New Patient',
+  },
+};

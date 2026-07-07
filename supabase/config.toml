@@ -1,0 +1,20 @@
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 16
+
+[auth]
+enabled = true
+smtp_user = "noreply@rehabos.ai"
+smtp_sender_name = "RehabOS AI"
+
+[storage]
+enabled = true
+file_size_limit = 52428800  # 50MB
+
+[analytics]
+enabled = false

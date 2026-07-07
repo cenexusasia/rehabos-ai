@@ -1,0 +1,1085 @@
+// RehabOS AI — Complete Prisma Database Schema
+// This is the single source of truth for the database.
+// All entities are fully normalized with proper relations.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm]
+}
+
+// ============================================
+// ORGANIZATIONS & TENANCY
+// ============================================
+
+enum SubscriptionTier {
+  free
+  starter
+  professional
+  enterprise
+}
+
+model Organization {
+  id              String           @id @default(uuid()) @db.Text
+  name            String
+  slug            String           @unique
+  logoUrl         String?          @map("logo_url")
+  website         String?
+  timezone        String           @default("UTC")
+  settings        Json             @default("{}")
+  subscriptionTier SubscriptionTier @default(free) @map("subscription_tier")
+  stripeCustomerId String?         @map("stripe_customer_id")
+  stripeSubscriptionId String?     @map("stripe_subscription_id")
+  isActive         Boolean         @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  clinics         Clinic[]
+  clinicians      Clinician[]
+  patients        Patient[]
+  roles           Role[]
+  appointments    Appointment[]
+  invoices        Invoice[]
+  auditLogs       AuditLog[]
+  aiConversations AiConversation[]
+  featureFlags    FeatureFlag[]
+  integrations    Integration[]
+  protocols       Protocol[]
+  assessments     Assessment[]
+  exercises       Exercise[]
+  conversations   Conversation[]
+
+  @@map("organizations")
+}
+
+model Clinic {
+  id             String   @id @default(uuid()) @db.Text
+  organizationId String   @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  address        Json?
+  phone          String?
+  email          String?
+  timezone       String
+  settings       Json     @default("{}")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clinicians   Clinician[]
+  patients     Patient[]
+  appointments Appointment[]
+  visits       Visit[]
+  invoices     Invoice[]
+
+  @@map("clinics")
+}
+
+model Clinician {
+  id               String   @id @default(uuid()) @db.Text
+  organizationId   String   @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinicId         String?  @map("clinic_id")
+  clinic           Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  email            String   @unique
+  firstName        String   @map("first_name")
+  lastName         String   @map("last_name")
+  title            String?
+  licenseNumber    String?  @map("license_number")
+  licenseState     String?  @map("license_state")
+  specialization   String[]
+  profileImageUrl  String?  @map("profile_image_url")
+  phone            String?
+  isActive         Boolean  @default(true) @map("is_active")
+  settings         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  roles          ClinicianRole[]
+  patients       Patient[]        @relation("PrimaryClinician")
+  referredPatients Patient[]      @relation("ReferringClinician")
+  visits         Visit[]
+  soapNotes      SoapNote[]
+  assessments    PatientAssessment[]
+  appointments   Appointment[]
+  availability   AvailabilitySchedule[]
+  timeOff        TimeOff[]
+  homePrograms   HomeExerciseProgram[]
+  messages       Message[]        @relation("MessageSender")
+  invoices       Invoice[]
+  telehealthSessions TelehealthSession[]
+  patientProtocols PatientProtocol[]
+
+  @@map("clinicians")
+}
+
+model Role {
+  id             String   @id @default(uuid()) @db.Text
+  organizationId String   @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String   // admin, clinician, billing_admin, front_desk, patient
+  description    String?
+  isSystem       Boolean  @default(false) @map("is_system")
+  permissions    String[]
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clinicians ClinicianRole[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model ClinicianRole {
+  clinicianId String   @map("clinician_id")
+  clinician   Clinician @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  roleId      String   @map("role_id")
+  role        Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  clinicId    String?  @map("clinic_id") // null = org-wide role
+  assignedAt  DateTime @default(now()) @map("assigned_at")
+
+  @@id([clinicianId, roleId])
+  @@map("clinician_roles")
+}
+
+// ============================================
+// PATIENTS
+// ============================================
+
+enum PatientStatus {
+  active
+  inactive
+  discharged
+  archived
+  transferred
+}
+
+model Patient {
+  id                  String        @id @default(uuid()) @db.Text
+  organizationId      String        @map("organization_id")
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinicId            String?       @map("clinic_id")
+  clinic              Clinic?       @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  clinicianId         String        @map("clinician_id")
+  clinician           Clinician     @relation("PrimaryClinician", fields: [clinicianId], references: [id])
+  firstName           String        @map("first_name")
+  lastName            String        @map("last_name")
+  dateOfBirth         DateTime      @map("date_of_birth") @db.Date
+  gender              String        // male, female, other, prefer_not_to_say
+  phone               String?
+  email               String?
+  address             Json?
+  emergencyContact    Json?         @map("emergency_contact")
+  insuranceProvider   String?       @map("insurance_provider")
+  insuranceId         String?       @map("insurance_id")
+  insuranceGroupNumber String?      @map("insurance_group_number")
+  diagnosisCodes      String[]      @map("diagnosis_codes")
+  referringProvider   String?       @map("referring_provider")
+  referredByClinicianId String?     @map("referred_by_clinician_id")
+  referredBy          Clinician?    @relation("ReferringClinician", fields: [referredByClinicianId], references: [id])
+  avatarUrl           String?       @map("avatar_url")
+  status              PatientStatus @default(active)
+  tags                String[]
+  notes               String?       @db.Text
+  settings            Json          @default("{}")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  deletedAt           DateTime?     @map("deleted_at")
+
+  visits              Visit[]
+  soapNotes           SoapNote[]
+  assessments         PatientAssessment[]
+  appointments        Appointment[]
+  homePrograms        HomeExerciseProgram[]
+  patientProtocols    PatientProtocol[]
+  invoices            Invoice[]
+  messages            Message[]              @relation("PatientMessages")
+  telehealthSessions  TelehealthSession[]
+
+  @@index([organizationId, clinicianId])
+  @@index([organizationId, status])
+  @@index([firstName, lastName])
+  @@map("patients")
+}
+
+// ============================================
+// ASSESSMENTS
+// ============================================
+
+enum ScoringType {
+  numeric
+  ordinal
+  likert
+  timed
+  pass_fail
+  percentage
+  visual_analog_scale
+}
+
+enum AssessmentCategory {
+  outcome_measure
+  functional_test
+  special_test
+  subjective
+  objective
+  patient_reported
+}
+
+model Assessment {
+  id                     String            @id @default(uuid()) @db.Text
+  organizationId         String?           @map("organization_id") // null = system-wide
+  organization           Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                   String
+  category               AssessmentCategory
+  subcategory            String?
+  description            String            @db.Text
+  instructions           String?           @db.Text
+  scoringType            ScoringType       @map("scoring_type")
+  scoringInstructions    String?           @map("scoring_instructions") @db.Text
+  minScore               Float?            @map("min_score")
+  maxScore               Float?            @map("max_score")
+  higherIsBetter         Boolean           @default(true) @map("higher_is_better")
+  mcid                   Float?            // minimal clinically important difference
+  normativeData          Json?             @map("normative_data")
+  bodyRegions            String[]          @map("body_regions")
+  conditions             String[]
+  estimatedDurationMinutes Int?             @map("estimated_duration_minutes")
+  requiredEquipment      String[]          @map("required_equipment")
+  isStandardized         Boolean           @default(false) @map("is_standardized")
+  version                String            @default("1.0")
+  questions              Json              @default("[]")
+  isActive               Boolean           @default(true) @map("is_active")
+  published              Boolean           @default(false)
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  patientAssessments PatientAssessment[]
+
+  @@index([organizationId, category])
+  @@index([name])
+  @@map("assessments")
+}
+
+model PatientAssessment {
+  id           String   @id @default(uuid()) @db.Text
+  patientId    String   @map("patient_id")
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinicianId  String   @map("clinician_id")
+  clinician    Clinician @relation(fields: [clinicianId], references: [id])
+  assessmentId String   @map("assessment_id")
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+  visitId      String?  @map("visit_id")
+  visit        Visit?   @relation(fields: [visitId], references: [id])
+  status       String   @default("in_progress") // in_progress, completed, partially_completed
+  responses    Json     @default("{}")
+  score        Float?
+  percentile   Float?
+  interpretation String? @db.Text
+  flagged      Boolean  @default(false)
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([patientId, assessmentId])
+  @@index([patientId, completedAt])
+  @@map("patient_assessments")
+}
+
+// ============================================
+// VISITS & SOAP NOTES
+// ============================================
+
+enum VisitType {
+  initial_evaluation
+  follow_up
+  reevaluation
+  discharge
+  telehealth
+  phone_consult
+  home_visit
+}
+
+enum VisitStatus {
+  scheduled
+  checked_in
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+model Visit {
+  id              String      @id @default(uuid()) @db.Text
+  patientId       String      @map("patient_id")
+  patient         Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinicianId     String      @map("clinician_id")
+  clinician       Clinician   @relation(fields: [clinicianId], references: [id])
+  appointmentId   String?     @unique @map("appointment_id")
+  appointment     Appointment? @relation(fields: [appointmentId], references: [id])
+  clinicId        String      @map("clinic_id")
+  clinic          Clinic      @relation(fields: [clinicId], references: [id])
+  visitType       VisitType   @map("visit_type")
+  visitNumber     Int         @map("visit_number")
+  status          VisitStatus @default(scheduled)
+  chiefComplaint  String?     @map("chief_complaint") @db.Text
+  diagnosisCodes  String[]    @map("diagnosis_codes")
+  durationMinutes Int?        @map("duration_minutes")
+  billedStatus    String      @default("pending") @map("billed_status")
+  billingCode     String?     @map("billing_code")
+  notes           String?     @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  soapNote              SoapNote?
+  patientAssessments    PatientAssessment[]
+  homeExercisePrograms  HomeExerciseProgram[]
+  invoiceLineItems      InvoiceLineItem[]
+  telehealthSessions    TelehealthSession[]
+
+  @@index([patientId, visitNumber])
+  @@index([clinicianId, createdAt])
+  @@map("visits")
+}
+
+enum SoapStatus {
+  draft
+  completed
+  signed
+  amended
+  corrected
+}
+
+model SoapNote {
+  id              String    @id @default(uuid()) @db.Text
+  visitId         String    @unique @map("visit_id")
+  visit           Visit     @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patientId       String    @map("patient_id")
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  clinicianId     String    @map("clinician_id")
+  clinician       Clinician @relation(fields: [clinicianId], references: [id])
+  subjective      Json      @default("{}")
+  objective       Json      @default("{}")
+  assessment      Json      @default("{}")
+  plan            Json      @default("{}")
+  aiGenerated     Boolean   @default(false) @map("ai_generated")
+  aiDraft         Json?     @map("ai_draft")
+  aiAssisted      Boolean   @default(false) @map("ai_assisted")
+  status          SoapStatus @default(draft)
+  signedAt        DateTime? @map("signed_at")
+  signedByClinicianId String? @map("signed_by_clinician_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([patientId, status])
+  @@index([clinicianId, createdAt])
+  @@map("soap_notes")
+}
+
+// ============================================
+// EXERCISE LIBRARY
+// ============================================
+
+model ExerciseCategory {
+  id          String             @id @default(uuid()) @db.Text
+  name        String
+  slug        String             @unique
+  parentId    String?            @map("parent_id")
+  parent      ExerciseCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    ExerciseCategory[] @relation("CategoryHierarchy")
+  description String?
+  sortOrder   Int                @default(0) @map("sort_order")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  exercises Exercise[]
+
+  @@map("exercise_categories")
+}
+
+enum ExerciseDifficulty {
+  beginner
+  intermediate
+  advanced
+  sports_specific
+}
+
+enum ExerciseSource {
+  built_in
+  community
+  clinic_custom
+  ai_generated
+}
+
+model Exercise {
+  id              String             @id @default(uuid()) @db.Text
+  organizationId  String?            @map("organization_id") // null = system-wide
+  organization    Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  alternativeNames String[]          @map("alternative_names")
+  description     String             @db.Text
+  instructions    String             @db.Text
+  cueingPoints    String[]           @map("cueing_points")
+  categoryId      String             @map("category_id")
+  category        ExerciseCategory   @relation(fields: [categoryId], references: [id])
+  bodyRegions     String[]           @map("body_regions")
+  movementPatterns String[]          @map("movement_patterns")
+  difficulty      ExerciseDifficulty @default(beginner)
+  equipment       String[]
+  contraindications String[]
+  precautions     String[]
+  targetMuscles   Json               @default("{}") // { primary: [], secondary: [], stabilizer: [] }
+  videoUrl        String?            @map("video_url")
+  imageUrls       String[]           @map("image_urls")
+  thumbnailUrl    String?            @map("thumbnail_url")
+  durationSeconds Int?               @map("duration_seconds")
+  isPassive       Boolean            @default(false) @map("is_passive")
+  isWeightBearing Boolean            @default(false) @map("is_weight_bearing")
+  isOpenChain     Boolean            @default(false) @map("is_open_chain")
+  isPlyometric    Boolean            @default(false) @map("is_plyometric")
+  tags            String[]
+  embedding       String?            @db.Text
+  isActive        Boolean            @default(true) @map("is_active")
+  published       Boolean            @default(false)
+  source          ExerciseSource     @default(built_in)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  parameters       ExerciseParameter[]
+  programExercises ProgramExercise[]
+
+  @@index([categoryId])
+  @@index([bodyRegions])
+  @@index([difficulty])
+  @@map("exercises")
+}
+
+model ExerciseParameter {
+  id            String   @id @default(uuid()) @db.Text
+  exerciseId    String   @map("exercise_id")
+  exercise      Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  name          String   // sets, reps, hold_duration, rest_interval, intensity, speed, frequency
+  parameterType String   @map("parameter_type") // number, range, text, percentage, rpe
+  defaultValue  String?  @map("default_value")
+  minValue      String?  @map("min_value")
+  maxValue      String?  @map("max_value")
+  unit          String?  // seconds, reps, kg, lbs, rpe_scale
+  required      Boolean  @default(false)
+  sortOrder     Int      @default(0) @map("sort_order")
+
+  @@map("exercise_parameters")
+}
+
+// ============================================
+// HOME EXERCISE PROGRAMS
+// ============================================
+
+enum HepStatus {
+  draft
+  active
+  paused
+  completed
+  archived
+}
+
+model HomeExerciseProgram {
+  id              String    @id @default(uuid()) @db.Text
+  patientId       String    @map("patient_id")
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinicianId     String    @map("clinician_id")
+  clinician       Clinician @relation(fields: [clinicianId], references: [id])
+  visitId         String?   @map("visit_id")
+  visit           Visit?    @relation(fields: [visitId], references: [id])
+  name            String
+  description     String?   @db.Text
+  status          HepStatus @default(draft)
+  startDate       DateTime? @map("start_date") @db.Date
+  endDate         DateTime? @map("end_date") @db.Date
+  frequencyPerDay Int?      @map("frequency_per_day")
+  daysPerWeek     Int?      @map("days_per_week")
+  totalDurationWeeks Int?   @map("total_duration_weeks")
+  phase           Int?      @default(1)
+  aiGenerated     Boolean   @default(false) @map("ai_generated")
+  aiPrompt        String?   @map("ai_prompt") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  exercises ProgramExercise[]
+
+  @@index([patientId, status])
+  @@index([patientId, startDate])
+  @@map("home_exercise_programs")
+}
+
+model ProgramExercise {
+  id              String            @id @default(uuid()) @db.Text
+  programId       String            @map("program_id")
+  program         HomeExerciseProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  exerciseId      String            @map("exercise_id")
+  exercise        Exercise          @relation(fields: [exerciseId], references: [id])
+  sortOrder       Int               @default(0) @map("sort_order")
+  sets            Int?
+  reps            String?
+  holdDuration    Int?              @map("hold_duration") // seconds
+  restDuration    Int?              @map("rest_duration") // seconds
+  intensity       String?
+  side            String?           // left, right, bilateral, alternating
+  frequency       String?
+  notes           String?           @db.Text
+  substitutions   Json?             // alternative exercises
+  progressionCriteria Json?         @map("progression_criteria")
+  aiProgressionMetadata Json?       @map("ai_progression_metadata")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@index([programId, sortOrder])
+  @@map("program_exercises")
+}
+
+// ============================================
+// PROTOCOLS
+// ============================================
+
+enum EvidenceLevel {
+  A // strong evidence
+  B // moderate evidence
+  C // limited evidence
+  D // conflicting evidence
+  expert_opinion
+}
+
+enum ProtocolSource {
+  built_in
+  community
+  clinic_custom
+  ai_generated
+}
+
+model Protocol {
+  id              String        @id @default(uuid()) @db.Text
+  organizationId  String?       @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  description     String        @db.Text
+  diagnosisCodes  String[]      @map("diagnosis_codes")
+  bodyRegion      String        @map("body_region")
+  condition       String
+  surgeryType     String?       @map("surgery_type")
+  totalDurationWeeks Int?       @map("total_duration_weeks")
+  evidenceLevel   EvidenceLevel? @map("evidence_level")
+  references      String[]
+  tags            String[]
+  published       Boolean       @default(false)
+  version         Int           @default(1)
+  source          ProtocolSource @default(built_in)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  phases       ProtocolPhase[]
+  patientProtocols PatientProtocol[]
+
+  @@index([organizationId])
+  @@index([condition])
+  @@map("protocols")
+}
+
+model ProtocolPhase {
+  id                    String   @id @default(uuid()) @db.Text
+  protocolId            String   @map("protocol_id")
+  protocol              Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  phaseNumber           Int      @map("phase_number")
+  name                  String
+  durationDays          Int?     @map("duration_days")
+  goals                 String[]
+  restrictions          String[]
+  criteriaToAdvance     String[] @map("criteria_to_advance")
+  exerciseRecommendations Json?  @map("exercise_recommendations")
+  outcomeMeasureTargets  Json?   @map("outcome_measure_targets")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([protocolId, phaseNumber])
+  @@map("protocol_phases")
+}
+
+model PatientProtocol {
+  id              String   @id @default(uuid()) @db.Text
+  patientId       String   @map("patient_id")
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinicianId     String   @map("clinician_id")
+  clinician       Clinician @relation(fields: [clinicianId], references: [id])
+  protocolId      String   @map("protocol_id")
+  protocol        Protocol @relation(fields: [protocolId], references: [id])
+  currentPhase    Int      @default(1) @map("current_phase")
+  startDate       DateTime @map("start_date") @db.Date
+  expectedEndDate DateTime? @map("expected_end_date") @db.Date
+  status          String   @default("active") // active, completed, discontinued, modified
+  modifications   Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([patientId, protocolId])
+  @@map("patient_protocols")
+}
+
+// ============================================
+// SCHEDULING & APPOINTMENTS
+// ============================================
+
+enum AppointmentType {
+  in_person
+  telehealth
+  phone_consult
+  home_visit
+}
+
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  checked_in
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+model Appointment {
+  id                String            @id @default(uuid()) @db.Text
+  organizationId    String            @map("organization_id")
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  clinicId          String            @map("clinic_id")
+  clinic            Clinic            @relation(fields: [clinicId], references: [id])
+  patientId         String            @map("patient_id")
+  patient           Patient           @relation(fields: [patientId], references: [id])
+  clinicianId       String            @map("clinician_id")
+  clinician         Clinician         @relation(fields: [clinicianId], references: [id])
+  appointmentType   AppointmentType   @default(in_person) @map("appointment_type")
+  status            AppointmentStatus @default(scheduled)
+  startTime         DateTime          @map("start_time") @db.Timestamptz
+  endTime           DateTime          @map("end_time") @db.Timestamptz
+  durationMinutes   Int               @map("duration_minutes")
+  reason            String?           @db.Text
+  notes             String?           @db.Text
+  cancellationReason String?          @map("cancellation_reason")
+  cancelledAt       DateTime?         @map("cancelled_at")
+  confirmedAt       DateTime?         @map("confirmed_at")
+  checkedInAt       DateTime?         @map("checked_in_at")
+  isRecurring       Boolean           @default(false) @map("is_recurring")
+  recurringRule     Json?             @map("recurring_rule")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  visit              Visit?
+  telehealthSession  TelehealthSession?
+
+  @@index([clinicianId, startTime])
+  @@index([patientId, startTime])
+  @@index([clinicId, startTime, status])
+  @@map("appointments")
+}
+
+model AvailabilitySchedule {
+  id                 String   @id @default(uuid()) @db.Text
+  clinicianId        String   @map("clinician_id")
+  clinician          Clinician @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  clinicId           String?  @map("clinic_id")
+  dayOfWeek          Int      @map("day_of_week") // 0=Sunday, 6=Saturday
+  startTime          DateTime @map("start_time") @db.Time
+  endTime            DateTime @map("end_time") @db.Time
+  slotDurationMinutes Int     @default(30) @map("slot_duration_minutes")
+  bufferMinutes      Int      @default(5) @map("buffer_minutes")
+  isAvailable        Boolean  @default(true) @map("is_available")
+  effectiveStart     DateTime @map("effective_start") @db.Date
+  effectiveEnd       DateTime? @map("effective_end") @db.Date
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([clinicianId, dayOfWeek])
+  @@map("availability_schedules")
+}
+
+model TimeOff {
+  id          String   @id @default(uuid()) @db.Text
+  clinicianId String   @map("clinician_id")
+  clinician   Clinician @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  startDate   DateTime @map("start_date") @db.Timestamptz
+  endDate     DateTime @map("end_date") @db.Timestamptz
+  reason      String?
+  isAllDay    Boolean  @default(true) @map("is_all_day")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([clinicianId, startDate, endDate])
+  @@map("time_offs")
+}
+
+// ============================================
+// BILLING
+// ============================================
+
+enum InvoiceStatus {
+  draft
+  sent
+  partially_paid
+  paid
+  overdue
+  cancelled
+  refunded
+  void
+}
+
+model Invoice {
+  id                String        @id @default(uuid()) @db.Text
+  organizationId    String        @map("organization_id")
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  clinicId          String        @map("clinic_id")
+  clinic            Clinic        @relation(fields: [clinicId], references: [id])
+  patientId         String        @map("patient_id")
+  patient           Patient       @relation(fields: [patientId], references: [id])
+  clinicianId       String        @map("clinician_id")
+  clinician         Clinician     @relation(fields: [clinicianId], references: [id])
+  invoiceNumber     String        @map("invoice_number")
+  status            InvoiceStatus @default(draft)
+  subtotal          Decimal       @db.Decimal(10, 2)
+  tax               Decimal       @default(0) @db.Decimal(10, 2)
+  discount          Decimal       @default(0) @db.Decimal(10, 2)
+  total             Decimal       @db.Decimal(10, 2)
+  currency          String        @default("USD")
+  dueDate           DateTime      @map("due_date") @db.Date
+  paidAt            DateTime?     @map("paid_at")
+  stripeInvoiceId   String?       @map("stripe_invoice_id")
+  xenditInvoiceId   String?       @map("xendit_invoice_id")
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  lineItems InvoiceLineItem[]
+  payments  Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([patientId, status])
+  @@index([organizationId, createdAt])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id            String   @id @default(uuid()) @db.Text
+  invoiceId     String   @map("invoice_id")
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  visitId       String?  @map("visit_id")
+  visit         Visit?   @relation(fields: [visitId], references: [id])
+  description   String
+  cptCode       String?  @map("cpt_code")
+  quantity      Int      @default(1)
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice    Decimal  @map("total_price") @db.Decimal(10, 2)
+  insuranceEligible Boolean @default(true) @map("insurance_eligible")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("invoice_line_items")
+}
+
+model Payment {
+  id                String   @id @default(uuid()) @db.Text
+  invoiceId         String   @map("invoice_id")
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount            Decimal  @db.Decimal(10, 2)
+  method            String   // credit_card, debit, gcash, maya, bank_transfer, cash, check, insurance
+  provider          String   // stripe, xendit, manual
+  providerPaymentId String?  @map("provider_payment_id")
+  status            String   @default("pending") // pending, completed, failed, refunded
+  refundedAt        DateTime? @map("refunded_at")
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// ============================================
+// MESSAGING
+// ============================================
+
+enum ConversationType {
+  direct_message
+  group
+  patient_clinician
+  referral
+  system
+}
+
+model Conversation {
+  id              String           @id @default(uuid()) @db.Text
+  organizationId  String           @map("organization_id")
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  subject         String?
+  type            ConversationType @default(direct_message)
+  participantIds  String[]         @map("participant_ids")
+  lastMessageAt   DateTime?        @map("last_message_at")
+  isArchived      Boolean          @default(false) @map("is_archived")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  messages Message[]
+
+  @@index([organizationId, lastMessageAt])
+  @@map("conversations")
+}
+
+enum MessageType {
+  text
+  image
+  video
+  document
+  exercise
+  appointment
+  invoice
+  system
+}
+
+model Message {
+  id              String         @id @default(uuid()) @db.Text
+  conversationId  String         @map("conversation_id")
+  conversation    Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String         @map("sender_id")
+  sender          Clinician      @relation("MessageSender", fields: [senderId], references: [id]) // or patient
+  senderType      String         @map("sender_type") // clinician, patient, system, ai_assistant
+  patientId       String?        @map("patient_id")
+  patient         Patient?       @relation("PatientMessages", fields: [patientId], references: [id])
+  body            String         @db.Text
+  attachments     Json           @default("[]")
+  messageType     MessageType    @default(text) @map("message_type")
+  metadata        Json?
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  reads MessageRead[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageRead {
+  messageId     String   @map("message_id")
+  message       Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  participantId String   @map("participant_id") // clinician or patient UUID
+  readAt        DateTime @default(now()) @map("read_at")
+
+  @@id([messageId, participantId])
+  @@map("message_reads")
+}
+
+// ============================================
+// TELEHEALTH
+// ============================================
+
+enum TelehealthStatus {
+  scheduled
+  active
+  completed
+  cancelled
+  failed
+}
+
+model TelehealthSession {
+  id                String            @id @default(uuid()) @db.Text
+  appointmentId     String            @unique @map("appointment_id")
+  appointment       Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId         String            @map("patient_id")
+  patient           Patient           @relation(fields: [patientId], references: [id])
+  clinicianId       String            @map("clinician_id")
+  clinician         Clinician         @relation(fields: [clinicianId], references: [id])
+  jitsiRoomName     String            @unique @map("jitsi_room_name")
+  status            TelehealthStatus  @default(scheduled)
+  startedAt         DateTime?         @map("started_at")
+  endedAt           DateTime?         @map("ended_at")
+  durationSeconds   Int?              @map("duration_seconds")
+  recordingUrl      String?           @map("recording_url")
+  patientJoined     Boolean           @default(false) @map("patient_joined")
+  clinicianJoined   Boolean           @default(false) @map("clinician_joined")
+  qualityMetrics    Json?             @map("quality_metrics")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  visitId           String?           @map("visit_id")
+  visit             Visit?            @relation(fields: [visitId], references: [id])
+
+  @@index([clinicianId, status])
+  @@index([patientId, status])
+  @@map("telehealth_sessions")
+}
+
+// ============================================
+// KNOWLEDGE GRAPH
+// ============================================
+
+enum EntityType {
+  diagnosis
+  symptom
+  exercise
+  assessment
+  protocol
+  body_part
+  medication
+  modality
+  special_test
+  contraindication
+  clinical_sign
+  outcome_measure
+  surgery
+}
+
+model KnowledgeGraphEntity {
+  id          String     @id @default(uuid()) @db.Text
+  entityType  EntityType @map("entity_type")
+  name        String
+  description String?    @db.Text
+  externalIds Json?      @map("external_ids") // ICD-10, SNOMED, CPT mappings
+  embedding   String?       @db.Text
+  metadata    Json       @default("{}")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  sourceRelationships KnowledgeGraphRelationship[] @relation("SourceEntity")
+  targetRelationships KnowledgeGraphRelationship[] @relation("TargetEntity")
+
+  @@index([entityType])
+  @@index([name])
+  @@map("knowledge_graph_entities")
+}
+
+enum RelationshipType {
+  indicated_for
+  contraindicated_for
+  part_of
+  treats
+  causes
+  associated_with
+  progresses_to
+  differentiates_from
+  strength_of_evidence
+  requires
+  risks
+  prevents
+  diagnoses
+}
+
+model KnowledgeGraphRelationship {
+  id               String           @id @default(uuid()) @db.Text
+  sourceEntityId   String           @map("source_entity_id")
+  sourceEntity     KnowledgeGraphEntity @relation("SourceEntity", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  targetEntityId   String           @map("target_entity_id")
+  targetEntity     KnowledgeGraphEntity @relation("TargetEntity", fields: [targetEntityId], references: [id], onDelete: Cascade)
+  relationshipType RelationshipType @map("relationship_type")
+  weight           Float?           @default(1.0)
+  evidence         String[]         // PubMed IDs, citation URLs
+  metadata         Json             @default("{}")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@index([sourceEntityId, relationshipType])
+  @@index([targetEntityId, relationshipType])
+  @@index([relationshipType])
+  @@map("knowledge_graph_relationships")
+}
+
+// ============================================
+// AUDIT & AI
+// ============================================
+
+model AuditLog {
+  id              String   @id @default(uuid()) @db.Text
+  organizationId  String   @map("organization_id")
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  clinicianId     String?  @map("clinician_id")
+  patientId       String?  @map("patient_id")
+  action          String   // assessment.created, soap.signed, patient.updated
+  resourceType    String   @map("resource_type")
+  resourceId      String   @map("resource_id")
+  changes         Json?    // before/after diff
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([action, createdAt])
+  @@index([patientId])
+  @@map("audit_logs")
+}
+
+enum AiSessionType {
+  soap_generation
+  assessment_interpretation
+  exercise_recommendation
+  hep_generation
+  clinical_question
+  patient_education
+  referral_suggestion
+  follow_up_plan
+  progression_suggestion
+}
+
+model AiConversation {
+  id              String        @id @default(uuid()) @db.Text
+  organizationId  String        @map("organization_id")
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  clinicianId     String        @map("clinician_id")
+  patientId       String?       @map("patient_id")
+  sessionType     AiSessionType @map("session_type")
+  prompt          String        @db.Text
+  response        String        @db.Text
+  modelUsed       String        @map("model_used")
+  tokensInput     Int           @map("tokens_input")
+  tokensOutput    Int           @map("tokens_output")
+  latencyMs       Int           @map("latency_ms")
+  feedback        Int?          // clinician rating 1-5
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([clinicianId, sessionType, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("ai_conversations")
+}
+
+// ============================================
+// SYSTEM / CONFIGURATION
+// ============================================
+
+model FeatureFlag {
+  id             String   @id @default(uuid()) @db.Text
+  organizationId String   @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  enabled        Boolean  @default(false)
+  rules          Json?    // targeting rules
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, key])
+  @@map("feature_flags")
+}
+
+model Integration {
+  id             String   @id @default(uuid()) @db.Text
+  organizationId String   @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String   // stripe, xendit, resend, etc.
+  config         Json     @default("{}") // encrypted where sensitive
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, provider])
+  @@map("integrations")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Text
+  key       String   @unique
+  value     Json
+  type      String   @default("string") // string, number, boolean, json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

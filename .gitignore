@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+next-env.d.ts
+
+# Build output
+dist/
+
+# Turbo
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env.local
+.env.production
+.env*.local
+
+# Testing
+coverage/
+
+# Deployment
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
