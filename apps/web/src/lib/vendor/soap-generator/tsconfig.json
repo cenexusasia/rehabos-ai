@@ -1,9 +1,0 @@
-{
-  "extends": "@rehabos/tsconfig/base.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "."
-  },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist"]
-}
